@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FG2HTML (FortiOS6.0)</title>
+</head>
+<body>
+  <h2>📂 FG2HTML (FortiOS6.0)</h2>
+
+  <input type="file" id="fileInput" accept=".conf"><br><br>
+  <button onclick="convert()">Download as UTF-8 CSV</button>
+  <a id="download" style="display:none; margin-left: 20px;">Download CSV</a>
+
+  <h3>🔍 Converted Rule Table:</h3>
+  <div id="preview" style="max-width: 100%; overflow-x: auto;"></div>
+
+  <script>
+    let fileContent = "";
+
+    document.getElementById("fileInput").addEventListener("change", function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        fileContent = e.target.result;
+        displayPreview(fileContent);
+      };
+      reader.readAsText(file);
+    });
+
+    function displayPreview(text) {
+      const policies = parsePolicies(text);
+      const sorted = sortPolicies(policies);
+      renderTable(sorted, "preview");
+    }
+
+    function convert() {
+      const policies = sortPolicies(parsePolicies(fileContent));
+      const fields = ["srcintf", "dstintf", "srcaddr", "dstaddr", "service", "action", "status", "schedule", "comments", "name", "uuid"];
+      let csv = fields.join(",") + "\n";
+      for (let p of policies) {
+        const row = fields.map(f => `"${(p[f] || "").replace(/"/g, '""').replace(/<br>/g, "\n")}"`);
+        csv += row.join(",") + "\n";
+      }
+      const utf8Bom = "\uFEFF";
+      const blob = new Blob([utf8Bom + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.getElementById("download");
+      link.href = url;
+      link.download = "firewall_policies.csv";
+      link.style.display = "inline";
+      link.textContent = "Download CSV";
+    }
+
+    function sortPolicies(policies) {
+      return policies.sort((a, b) => {
+        const aSrc = (a.srcintf || "").toLowerCase();
+        const bSrc = (b.srcintf || "").toLowerCase();
+        if (aSrc < bSrc) return -1;
+        if (aSrc > bSrc) return 1;
+        const aDst = (a.dstintf || "").toLowerCase();
+        const bDst = (b.dstintf || "").toLowerCase();
+        return aDst.localeCompare(bDst);
+      });
+    }
+
+    function renderTable(policies, targetId) {
+      const fields = ["srcintf", "dstintf", "srcaddr", "dstaddr", "service", "action", "status", "schedule", "comments", "name", "uuid"];
+      let html = `<table border="1" style="border-collapse:collapse;">`;
+      html += `<tr>${fields.map(f => `<th style="white-space:normal; word-wrap:break-word;">${f}</th>`).join("")}</tr>`;
+      for (let p of policies) {
+        const isDisabled = (p["status"] || "").toLowerCase() === "no";
+        html += `<tr style="${isDisabled ? 'background-color:#fdd;' : ''}">` +
+                fields.map(f => `<td style="white-space:normal; word-wrap:break-word;">${p[f] || ""}</td>`).join("") +
+                `</tr>`;
+      }
+      html += `</table>`;
+      document.getElementById(targetId).innerHTML = html;
+    }
+
+    function parsePolicies(input) {
+      const lines = input.split("\n");
+      const policies = [];
+      let current = {};
+      let inPolicy = false;
+
+      for (let line of lines) {
+        line = line.trim();
+        if (line === "config firewall policy") {
+          inPolicy = true;
+          continue;
+        }
+        if (line === "end") {
+          inPolicy = false;
+          continue;
+        }
+        if (!inPolicy) continue;
+
+        if (line.startsWith("edit")) {
+          current = {};
+        } else if (line === "next") {
+          // Normalize action
+          const action = (current["action"] || "").toLowerCase();
+          if (!action) {
+            current["action"] = "deny";
+          } else if (action === "accept") {
+            current["action"] = "permit";
+          }
+
+          // Normalize status
+          const status = (current["status"] || "").toLowerCase();
+          if (!status) {
+            current["status"] = "Yes";
+          } else if (status === "disable") {
+            current["status"] = "No";
+          } else {
+            current["status"] = "Yes";
+          }
+
+          policies.push(current);
+        } else {
+          const match = line.match(/^set (\S+) (.+)$/);
+          if (match) {
+            const key = match[1];
+            let value = match[2].trim();
+            const values = value.match(/"[^"]+"|\S+/g) || [];
+            const cleaned = values.map(v => v.replace(/"/g, "")).join("<br>");
+            current[key] = cleaned;
+          }
+        }
+      }
+      return policies;
+    }
+  </script>
+</body>
+</html>
