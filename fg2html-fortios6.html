@@ -36,7 +36,7 @@
 
     function convert() {
       const policies = sortPolicies(parsePolicies(fileContent));
-      const fields = ["srcintf", "dstintf", "srcaddr", "dstaddr", "service", "action", "status", "schedule", "comments", "name", "uuid"];
+      const fields = ["srcintf", "dstintf", "ID", "srcaddr", "dstaddr", "service", "action", "status", "schedule", "comments", "name", "uuid"];
       let csv = fields.join(",") + "\n";
       for (let p of policies) {
         const row = fields.map(f => `"${(p[f] || "").replace(/"/g, '""').replace(/<br>/g, "\n")}"`);
@@ -65,7 +65,7 @@
     }
 
     function renderTable(policies, targetId) {
-      const fields = ["srcintf", "dstintf", "srcaddr", "dstaddr", "service", "action", "status", "schedule", "comments", "name", "uuid"];
+      const fields = ["srcintf", "dstintf", "ID", "srcaddr", "dstaddr", "service", "action", "status", "schedule", "comments", "name", "uuid"];
       let html = `<table border="1" style="border-collapse:collapse;">`;
       html += `<tr>${fields.map(f => `<th style="white-space:normal; word-wrap:break-word;">${f}</th>`).join("")}</tr>`;
       for (let p of policies) {
@@ -97,7 +97,11 @@
         if (!inPolicy) continue;
 
         if (line.startsWith("edit")) {
-          current = {};
+          const idMatch = line.match(/^edit\s+(\d+)/);
+          if (idMatch) {
+            current = {};
+            current["ID"] = idMatch[1];
+          }
         } else if (line === "next") {
           // Normalize action
           const action = (current["action"] || "").toLowerCase();
